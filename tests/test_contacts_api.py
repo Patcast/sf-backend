@@ -144,3 +144,72 @@ def test_delete_contact(client, payload):
 def test_root_lists_entrypoints(client):
     body = client.get("/").json()
     assert body["contacts"] == BASE
+
+
+# A valid 1x1 PNG, base64-encoded.
+PHOTO = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+
+
+def test_create_contact_with_photo(client, payload):
+    response = client.post(BASE, json={**payload, "photo": PHOTO})
+    assert response.status_code == 201
+    assert response.json()["photo"] == PHOTO
+
+
+def test_photo_rejects_non_data_url(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "https://example.com/ada.png"})
+    assert response.status_code == 422
+
+
+def test_photo_rejects_non_image_mime_type(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "data:text/html;base64,PGI+aGk8L2I+"})
+    assert response.status_code == 422
+
+
+def test_photo_rejects_oversized_image(client, payload):
+    import base64
+
+    from app.schemas import PHOTO_MAX_BYTES
+
+    too_big = "data:image/png;base64," + base64.b64encode(b"\0" * (PHOTO_MAX_BYTES + 1)).decode()
+    response = client.post(BASE, json={**payload, "photo": too_big})
+    assert response.status_code == 422
+
+
+def test_init_db_adds_missing_nullable_columns(client):
+    """A database created before the photo column existed gets it on startup."""
+    from sqlalchemy import inspect, text
+
+    from app.database import engine, init_db
+
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE contacts DROP COLUMN photo"))
+    assert "photo" not in {column["name"] for column in inspect(engine).get_columns("contacts")}
+
+    init_db()
+    assert "photo" in {column["name"] for column in inspect(engine).get_columns("contacts")}
+
+
+def test_patch_can_set_and_clear_photo(client, payload):
+    contact_id = client.post(BASE, json=payload).json()["id"]
+
+    response = client.patch(f"{BASE}/{contact_id}", json={"photo": PHOTO})
+    assert response.status_code == 200
+    assert response.json()["photo"] == PHOTO
+
+    response = client.patch(f"{BASE}/{contact_id}", json={"photo": None})
+    assert response.status_code == 200
+    assert response.json()["photo"] is None
+
+
+def test_put_without_photo_clears_it(client, payload):
+    contact_id = client.post(BASE, json={**payload, "photo": PHOTO}).json()["id"]
+    response = client.put(
+        f"{BASE}/{contact_id}",
+        json={"first_name": "Ada", "last_name": "Lovelace", "email": "ada@example.com"},
+    )
+    assert response.status_code == 200
+    assert response.json()["photo"] is None  # PUT is a full replace
