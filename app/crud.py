@@ -86,8 +86,9 @@ def replace_contact(db: Session, contact: Contact, payload: ContactReplace) -> C
 def update_contact(db: Session, contact: Contact, payload: ContactUpdate) -> Contact:
     for field, value in payload.model_dump(exclude_unset=True, exclude={"addresses"}).items():
         setattr(contact, field, _normalize_email(value) if field == "email" else value)
-    if "addresses" in payload.model_fields_set and payload.addresses is not None:
-        contact.addresses = _build_addresses(payload.addresses)
+    if "addresses" in payload.model_fields_set:
+        # An explicit `"addresses": null` clears the list, per ContactUpdate's contract.
+        contact.addresses = _build_addresses(payload.addresses or [])
     db.commit()
     db.refresh(contact)
     return contact

@@ -107,11 +107,16 @@ also read):
 (case-insensitive). Everything else is optional.
 
 ```
-first_name, last_name, email, phone, company, job_title,
-address, city, state, postal_code, country, notes
+first_name, last_name, email, phone, company, job_title, notes, photo,
+addresses[] — each with: type (home | work | other), street,
+city, state, postal_code, country
 ```
 
-Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC).
+A contact holds up to 20 addresses; each needs a non-blank `street`, and
+`type` defaults to `home`. `photo` is an image data URL of at most 1 MB.
+
+Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC), plus
+an `id` on every address.
 
 ### List query parameters
 

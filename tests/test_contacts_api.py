@@ -218,6 +218,17 @@ def test_address_requires_a_street(client, payload):
     assert client.post(BASE, json=bad).status_code == 422
 
 
+def test_address_rejects_whitespace_only_street(client, payload):
+    bad = {**payload, "addresses": [{"type": "home", "street": "   "}]}
+    assert client.post(BASE, json=bad).status_code == 422
+
+
+def test_address_street_is_stripped(client, payload):
+    padded = {**payload, "addresses": [{"type": "home", "street": "  1 Market St  "}]}
+    created = client.post(BASE, json=padded).json()
+    assert created["addresses"][0]["street"] == "1 Market St"
+
+
 def test_put_replaces_the_address_list(client, payload):
     contact_id = client.post(BASE, json=payload).json()["id"]
 
@@ -242,6 +253,14 @@ def test_patch_replaces_addresses_only_when_sent(client, payload):
     assert len(untouched.json()["addresses"]) == 2
 
     cleared = client.patch(f"{BASE}/{contact_id}", json={"addresses": []})
+    assert cleared.json()["addresses"] == []
+
+
+def test_patch_null_clears_addresses(client, payload):
+    contact_id = client.post(BASE, json=payload).json()["id"]
+
+    cleared = client.patch(f"{BASE}/{contact_id}", json={"addresses": None})
+    assert cleared.status_code == 200
     assert cleared.json()["addresses"] == []
 
 
