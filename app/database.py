@@ -50,6 +50,31 @@ def init_db() -> None:
     from app import models  # noqa: F401  (register models on Base.metadata)
 
     Base.metadata.create_all(bind=engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """
+    Additive micro-migration for persistent databases.
+
+    `create_all` creates missing tables but never alters existing ones, so a
+    file-based SQLite or Postgres database created before a column existed
+    would otherwise break on the first query that references it. New nullable
+    columns are added here; anything more belongs in a real migration tool.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        existing = {column["name"] for column in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in existing or not column.nullable:
+                continue
+            column_type = column.type.compile(engine.dialect)
+            with engine.begin() as connection:
+                connection.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {column.name} {column_type}'))
 
 
 def get_db() -> Generator[Session, None, None]:

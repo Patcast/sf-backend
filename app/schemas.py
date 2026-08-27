@@ -16,8 +16,14 @@ def _validate_photo(value: str | None) -> str | None:
     match = _PHOTO_DATA_URL.match(value)
     if match is None:
         raise ValueError("photo must be a data URL with MIME type image/png, image/jpeg, image/webp, or image/gif")
+    data = match.group("data")
+    # 4 base64 chars encode 3 bytes — reject oversized payloads before decoding
+    # so they never cost a second large allocation. The decoded check stays as
+    # defence in depth.
+    if len(data) > PHOTO_MAX_BYTES * 4 // 3 + 4:
+        raise ValueError(f"photo must decode to at most {PHOTO_MAX_BYTES // 1_000_000} MB")
     try:
-        decoded = base64.b64decode(match.group("data"), validate=True)
+        decoded = base64.b64decode(data, validate=True)
     except ValueError as exc:
         raise ValueError("photo contains invalid base64 data") from exc
     if len(decoded) > PHOTO_MAX_BYTES:

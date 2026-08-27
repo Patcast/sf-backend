@@ -179,6 +179,20 @@ def test_photo_rejects_oversized_image(client, payload):
     assert response.status_code == 422
 
 
+def test_init_db_adds_missing_nullable_columns(client):
+    """A database created before the photo column existed gets it on startup."""
+    from sqlalchemy import inspect, text
+
+    from app.database import engine, init_db
+
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE contacts DROP COLUMN photo"))
+    assert "photo" not in {column["name"] for column in inspect(engine).get_columns("contacts")}
+
+    init_db()
+    assert "photo" in {column["name"] for column in inspect(engine).get_columns("contacts")}
+
+
 def test_patch_can_set_and_clear_photo(client, payload):
     contact_id = client.post(BASE, json=payload).json()["id"]
 
