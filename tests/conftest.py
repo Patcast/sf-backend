@@ -29,9 +29,21 @@ def payload() -> dict:
         "phone": "+1-415-555-0101",
         "company": "Analytical Engines",
         "job_title": "Mathematician",
-        "city": "San Francisco",
-        "state": "CA",
-        "postal_code": "94105",
-        "country": "USA",
+        "addresses": [
+            {
+                "type": "home",
+                "street": "12 St James's Square",
+                "city": "London",
+                "country": "UK",
+            },
+            {
+                "type": "work",
+                "street": "1 Market St, Suite 400",
+                "city": "San Francisco",
+                "state": "CA",
+                "postal_code": "94105",
+                "country": "USA",
+            },
+        ],
         "notes": "First programmer.",
     }
