@@ -17,6 +17,8 @@ def test_create_contact(client, payload):
     assert body["email"] == "ada@example.com"
     assert body["full_name"] == "Ada Lovelace"
     assert body["created_at"] and body["updated_at"]
+    assert [address["type"] for address in body["addresses"]] == ["home", "work"]
+    assert all(address["id"] > 0 for address in body["addresses"])
 
 
 def test_create_requires_valid_email(client, payload):
@@ -124,6 +126,7 @@ def test_put_replaces_contact(client, payload):
     body = response.json()
     assert body["full_name"] == "Grace Hopper"
     assert body["company"] is None  # omitted fields are cleared by PUT
+    assert body["addresses"] == []  # ...and so is an omitted address list
 
 
 def test_put_missing_contact_returns_404(client):
@@ -203,6 +206,58 @@ def test_patch_can_set_and_clear_photo(client, payload):
     response = client.patch(f"{BASE}/{contact_id}", json={"photo": None})
     assert response.status_code == 200
     assert response.json()["photo"] is None
+
+
+def test_address_rejects_unknown_type(client, payload):
+    bad = {**payload, "addresses": [{"type": "vacation", "street": "1 Beach Rd"}]}
+    assert client.post(BASE, json=bad).status_code == 422
+
+
+def test_address_requires_a_street(client, payload):
+    bad = {**payload, "addresses": [{"type": "home", "street": ""}]}
+    assert client.post(BASE, json=bad).status_code == 422
+
+
+def test_put_replaces_the_address_list(client, payload):
+    contact_id = client.post(BASE, json=payload).json()["id"]
+
+    response = client.put(
+        f"{BASE}/{contact_id}",
+        json={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@example.com",
+            "addresses": [{"type": "other", "street": "99 New Rd", "city": "Oxford"}],
+        },
+    )
+    assert response.status_code == 200
+    addresses = response.json()["addresses"]
+    assert [(address["type"], address["street"]) for address in addresses] == [("other", "99 New Rd")]
+
+
+def test_patch_replaces_addresses_only_when_sent(client, payload):
+    contact_id = client.post(BASE, json=payload).json()["id"]
+
+    untouched = client.patch(f"{BASE}/{contact_id}", json={"phone": "+1-000-000-0000"})
+    assert len(untouched.json()["addresses"]) == 2
+
+    cleared = client.patch(f"{BASE}/{contact_id}", json={"addresses": []})
+    assert cleared.json()["addresses"] == []
+
+
+def test_deleting_a_contact_deletes_its_addresses(client, payload):
+    from sqlalchemy import func, select
+
+    from app.database import SessionLocal
+    from app.models import Address
+
+    contact_id = client.post(BASE, json=payload).json()["id"]
+    with SessionLocal() as db:
+        assert db.execute(select(func.count()).select_from(Address)).scalar_one() == 2
+
+    assert client.delete(f"{BASE}/{contact_id}").status_code == 204
+    with SessionLocal() as db:
+        assert db.execute(select(func.count()).select_from(Address)).scalar_one() == 0
 
 
 def test_put_without_photo_clears_it(client, payload):
