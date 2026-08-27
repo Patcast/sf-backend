@@ -1,6 +1,28 @@
+import base64
+import re
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+
+# Photos travel inline as base64 data URLs because the database is in-memory —
+# there is no file storage to point at.
+PHOTO_MAX_BYTES = 1_000_000
+_PHOTO_DATA_URL = re.compile(r"^data:image/(png|jpeg|webp|gif);base64,(?P<data>[A-Za-z0-9+/]+={0,2})$")
+
+
+def _validate_photo(value: str | None) -> str | None:
+    if value is None:
+        return None
+    match = _PHOTO_DATA_URL.match(value)
+    if match is None:
+        raise ValueError("photo must be a data URL with MIME type image/png, image/jpeg, image/webp, or image/gif")
+    try:
+        decoded = base64.b64decode(match.group("data"), validate=True)
+    except ValueError as exc:
+        raise ValueError("photo contains invalid base64 data") from exc
+    if len(decoded) > PHOTO_MAX_BYTES:
+        raise ValueError(f"photo must decode to at most {PHOTO_MAX_BYTES // 1_000_000} MB")
+    return value
 
 
 class ContactBase(BaseModel):
@@ -69,6 +91,19 @@ class ContactBase(BaseModel):
         description="Free-form notes about the contact. No length limit.",
         examples=["Met at the SF hackathon."],
     )
+    photo: str | None = Field(
+        default=None,
+        description=(
+            "Profile photo as a base64 `data:image/...` URL. Accepted MIME types are "
+            "png, jpeg, webp, and gif; the decoded image is capped at 1 MB."
+        ),
+        examples=["data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="],
+    )
+
+    @field_validator("photo")
+    @classmethod
+    def _photo_is_a_small_image(cls, value: str | None) -> str | None:
+        return _validate_photo(value)
 
 
 _FULL_EXAMPLE = {
@@ -134,6 +169,15 @@ class ContactUpdate(BaseModel):
     postal_code: str | None = Field(default=None, max_length=20, description="New postal code.")
     country: str | None = Field(default=None, max_length=120, description="New country.")
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
+    photo: str | None = Field(
+        default=None,
+        description="New profile photo as a base64 `data:image/...` URL; `null` removes the photo.",
+    )
+
+    @field_validator("photo")
+    @classmethod
+    def _photo_is_a_small_image(cls, value: str | None) -> str | None:
+        return _validate_photo(value)
 
 
 class ContactRead(ContactBase):
